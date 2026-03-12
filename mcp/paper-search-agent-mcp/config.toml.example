@@ -1,0 +1,45 @@
+# paper-search-agent master configuration
+# Copy this file to config.toml and adjust settings for your environment.
+# Every discovery source and retrieval route has an on/off switch.
+# Disabled sources will not be registered as available MCP tools.
+
+[runtime]
+agent_backend = "codex"  # "codex" (default) or "claude"
+
+# ── Discovery Sources ────────────────────────────────────────────
+[discovery]
+openalex        = true
+crossref        = true
+scopus          = false   # requires ELSEVIER_API_KEY
+springer_meta   = true
+arxiv           = false
+pubmed          = false
+europe_pmc      = true
+semantic_scholar = false
+unpaywall       = true
+
+# ── Retrieval Routes ─────────────────────────────────────────────
+[retrieval]
+elsevier_api        = true   # requires campus network + ELSEVIER_API_KEY
+springer_oa_api     = true
+wiley_tdm           = false  # uses Crossref TDM links + institutional IP
+europe_pmc_fulltext = true
+browser_assisted    = true
+manual_import       = true
+
+# ── Optional Integrations ────────────────────────────────────────
+[integrations]
+zotero = false   # requires ZOTERO_API_KEY + ZOTERO_LIBRARY_ID
+
+[integrations.zotero_settings]
+library_type = "user"  # "user" or "group"
+
+# ── Browser Settings ─────────────────────────────────────────────
+[browser]
+auto_save_state = true
+state_directory = "./cache/browser-state"
+
+# ── Token Budget ─────────────────────────────────────────────────
+[token_budget]
+abstract_first_triage = true
+max_fulltext_tokens   = 60000  # per-paper token limit for chunked delivery

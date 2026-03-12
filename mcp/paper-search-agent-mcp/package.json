@@ -1,0 +1,53 @@
+{
+  "name": "paper-search-agent-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for paper-search-agent: academic paper discovery, access planning, and full-text retrieval via campus network",
+  "type": "module",
+  "main": "dist/server.js",
+  "bin": {
+    "paper-search-agent-mcp": "dist/server.js"
+  },
+  "files": [
+    "dist",
+    "config.toml.example",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/server.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "paper-search",
+    "academic",
+    "scholar",
+    "literature-review",
+    "openalex",
+    "crossref",
+    "elsevier",
+    "springer",
+    "wiley",
+    "zotero"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/STSNana/paper-search-agent.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "dotenv": "^16.4.0",
+    "playwright": "^1.58.2",
+    "toml": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
