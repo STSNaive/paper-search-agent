@@ -6,6 +6,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { doiToSafePath } from "../../utils/doi.js";
+import type { NormalizedPaperRecord } from "../../schemas/index.js";
 
 // ── Cache operations ──────────────────────────────────────────────
 
@@ -67,6 +68,42 @@ export function cacheArtifact(
   return entry;
 }
 
+// ── Parsed Records operations ─────────────────────────────────────
+
+function parsedDir(basePath: string): string {
+  return resolve(basePath, "_parsed");
+}
+
+export function saveParsedRecord(
+  paperId: string,
+  record: NormalizedPaperRecord,
+  basePath: string
+): void {
+  const safeName = paperId.replace(/[/\\:*?"<>|]/g, "_");
+  const dir = parsedDir(basePath);
+  mkdirSync(dir, { recursive: true });
+  const p = join(dir, `${safeName}.json`);
+  writeFileSync(p, JSON.stringify(record, null, 2), "utf-8");
+}
+
+export function loadParsedRecord(
+  paperId: string,
+  basePath: string
+): NormalizedPaperRecord | null {
+  const safeName = paperId.replace(/[/\\:*?"<>|]/g, "_");
+  const p = join(parsedDir(basePath), `${safeName}.json`);
+  if (!existsSync(p)) return null;
+  return JSON.parse(readFileSync(p, "utf-8")) as NormalizedPaperRecord;
+}
+
+export function loadAllParsedRecords(basePath: string): NormalizedPaperRecord[] {
+  const dir = parsedDir(basePath);
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => f.endsWith(".json"))
+    .map((f) => JSON.parse(readFileSync(join(dir, f), "utf-8")) as NormalizedPaperRecord);
+}
+
 // ── Corpus operations ─────────────────────────────────────────────
 
 export interface CorpusIndex {
@@ -83,18 +120,18 @@ export interface CorpusPaperRef {
   added_at: string;
 }
 
-function corpusDir(basePath: string = "./corpus"): string {
+function corpusDir(basePath: string): string {
   return resolve(basePath);
 }
 
-function corpusIndexPath(name: string, basePath?: string): string {
+function corpusIndexPath(name: string, basePath: string): string {
   return join(corpusDir(basePath), `${name}.json`);
 }
 
 /**
  * Load or create a corpus index file.
  */
-function loadCorpus(name: string, basePath?: string): CorpusIndex {
+function loadCorpus(name: string, basePath: string): CorpusIndex {
   const p = corpusIndexPath(name, basePath);
   if (existsSync(p)) {
     return JSON.parse(readFileSync(p, "utf-8")) as CorpusIndex;
@@ -107,7 +144,7 @@ function loadCorpus(name: string, basePath?: string): CorpusIndex {
   };
 }
 
-function saveCorpus(corpus: CorpusIndex, basePath?: string): void {
+function saveCorpus(corpus: CorpusIndex, basePath: string): void {
   const dir = corpusDir(basePath);
   mkdirSync(dir, { recursive: true });
   corpus.updated_at = new Date().toISOString();
@@ -122,7 +159,7 @@ export function addToCorpus(
   paperId: string,
   doi: string | null,
   title: string,
-  basePath?: string,
+  basePath: string,
 ): CorpusIndex {
   const corpus = loadCorpus(corpusName, basePath);
   // Avoid duplicates
@@ -142,7 +179,7 @@ export function addToCorpus(
 /**
  * List all papers in a corpus.
  */
-export function listCorpus(corpusName: string, basePath?: string): CorpusPaperRef[] {
+export function listCorpus(corpusName: string, basePath: string): CorpusPaperRef[] {
   return loadCorpus(corpusName, basePath).papers;
 }
 
@@ -152,7 +189,7 @@ export function listCorpus(corpusName: string, basePath?: string): CorpusPaperRe
 export function removeFromCorpus(
   corpusName: string,
   paperId: string,
-  basePath?: string,
+  basePath: string,
 ): CorpusIndex {
   const corpus = loadCorpus(corpusName, basePath);
   corpus.papers = corpus.papers.filter((p) => p.paper_id !== paperId);
@@ -163,7 +200,7 @@ export function removeFromCorpus(
 /**
  * Deduplicate corpus entries by DOI.
  */
-export function deduplicateCorpus(corpusName: string, basePath?: string): CorpusIndex {
+export function deduplicateCorpus(corpusName: string, basePath: string): CorpusIndex {
   const corpus = loadCorpus(corpusName, basePath);
   const seen = new Set<string>();
   corpus.papers = corpus.papers.filter((p) => {
@@ -179,7 +216,8 @@ export function deduplicateCorpus(corpusName: string, basePath?: string): Corpus
 /**
  * List all available corpus names.
  */
-export function listAllCorpora(basePath?: string): string[] {
+export function listAllCorpora(basePath: string): string[] {
+  if (!basePath) return [];
   const dir = corpusDir(basePath);
   if (!existsSync(dir)) return [];
   return readdirSync(dir)

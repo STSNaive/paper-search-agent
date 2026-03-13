@@ -77,7 +77,7 @@ export async function createAccessPlan(
 
   // 3. Check local cache
   if (doi) {
-    const cache = checkCache(doi, "./cache");
+    const cache = checkCache(doi, config.paths.cache_dir);
     if (cache.found) {
       ctx.cacheHit = true;
       ctx.notes.push(`Local cache hit: ${cache.path}`);

@@ -5,6 +5,7 @@
  */
 
 import type { CandidatePaper } from "../../schemas/index.js";
+import { fetchWithRetry } from "../../utils/http.js";
 
 const BASE = "https://www.ebi.ac.uk/europepmc/webservices/rest";
 
@@ -22,7 +23,7 @@ export async function searchEuropePmc(
   params.set("format", "json");
 
   const url = `${BASE}/search?${params.toString()}`;
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     headers: { Accept: "application/json" },
   });
   if (!res.ok) {
@@ -46,7 +47,7 @@ export async function checkEuropePmcFulltext(
   params.set("format", "json");
 
   const url = `${BASE}/search?${params.toString()}`;
-  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  const res = await fetchWithRetry(url, { headers: { Accept: "application/json" } });
   if (!res.ok) return { available: false, pmcId: null };
 
   const data = (await res.json()) as EuropePmcSearchResponse;
@@ -74,7 +75,7 @@ export async function fetchEuropePmcFulltext(
   pmcId: string,
 ): Promise<{ xml: string } | null> {
   const url = `${BASE}/${encodeURIComponent(pmcId)}/fullTextXML`;
-  const res = await fetch(url);
+  const res = await fetchWithRetry(url);
   if (!res.ok) {
     if (res.status === 404) return null;
     throw new Error(`Europe PMC fulltext failed: ${res.status} ${res.statusText}`);

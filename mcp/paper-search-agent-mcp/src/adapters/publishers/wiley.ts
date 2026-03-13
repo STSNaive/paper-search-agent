@@ -18,6 +18,7 @@
  *
  * Docs: https://onlinelibrary.wiley.com/library-info/resources/text-and-datamining
  */
+import { fetchWithRetry } from "../../utils/http.js";
 
 export interface WileyTdmLink {
   url: string;
@@ -42,7 +43,7 @@ export async function getWileyTdmLinks(doi: string): Promise<WileyTdmLink[]> {
   try {
     const email = process.env.UNPAYWALL_EMAIL ?? "paper-search-agent";
     const url = `https://api.crossref.org/works/${encodeURIComponent(doi)}`;
-    const res = await fetch(url, {
+    const res = await fetchWithRetry(url, {
       headers: {
         "User-Agent": `paper-search-agent/1.0 (mailto:${email})`,
       },
@@ -112,7 +113,7 @@ export async function fetchWileyTdm(doi: string): Promise<WileyTdmResult> {
             ? "application/pdf"
             : "*/*";
 
-      const res = await fetch(link.url, {
+      const res = await fetchWithRetry(link.url, {
         headers: { Accept: accept },
         redirect: "follow",
       });

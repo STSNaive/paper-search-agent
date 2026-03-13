@@ -41,6 +41,14 @@ export function publisherFromDoiPrefix(doi: string): string | null {
     "10.1371": "plos",
     "10.3389": "frontiers",
     "10.48550": "arxiv",
+    "10.1080": "taylor_francis",
+    "10.1177": "sage",
+    "10.1093": "oup", // Oxford University Press
+    "10.1017": "cup", // Cambridge University Press
+    "10.3390": "mdpi",
+    "10.1126": "science",
+    "10.1073": "pnas",
+    "10.1523": "sfn", // Society for Neuroscience
   };
   return map[prefix] ?? null;
 }

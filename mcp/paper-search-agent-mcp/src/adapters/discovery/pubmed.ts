@@ -5,9 +5,11 @@
  */
 
 import type { CandidatePaper } from "../../schemas/index.js";
+import { fetchWithRetry } from "../../utils/http.js";
 
 const ESEARCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi";
 const ESUMMARY = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi";
+const EFETCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi";
 
 /**
  * Search PubMed by keyword / query string.
@@ -23,7 +25,17 @@ export async function searchPubMed(
 
   // Step 2: esummary — get metadata for PMIDs
   const summaries = await esummary(pmids);
-  return summaries.map((s, i) => summaryToCandidatePaper(s, i));
+
+  // Step 3: efetch — get abstracts for PMIDs
+  const abstracts = await efetchAbstracts(pmids);
+
+  return summaries.map((s, i) => {
+    const paper = summaryToCandidatePaper(s, i);
+    if (s.uid && abstracts[s.uid]) {
+      paper.abstract = abstracts[s.uid] ?? null;
+    }
+    return paper;
+  });
 }
 
 // ── E-utilities calls ─────────────────────────────────────────────
@@ -48,7 +60,7 @@ async function esearch(
   if (apiKey) params.set("api_key", apiKey);
 
   const url = `${ESEARCH}?${params.toString()}`;
-  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  const res = await fetchWithRetry(url, { headers: { Accept: "application/json" } });
   if (!res.ok) {
     throw new Error(`PubMed esearch failed: ${res.status} ${res.statusText}`);
   }
@@ -74,7 +86,7 @@ async function esummary(pmids: string[]): Promise<PubMedSummary[]> {
   if (apiKey) params.set("api_key", apiKey);
 
   const url = `${ESUMMARY}?${params.toString()}`;
-  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  const res = await fetchWithRetry(url, { headers: { Accept: "application/json" } });
   if (!res.ok) {
     throw new Error(`PubMed esummary failed: ${res.status} ${res.statusText}`);
   }
@@ -91,6 +103,53 @@ async function esummary(pmids: string[]): Promise<PubMedSummary[]> {
     }
   }
   return summaries;
+}
+
+async function efetchAbstracts(pmids: string[]): Promise<Record<string, string>> {
+  const params = new URLSearchParams();
+  params.set("db", "pubmed");
+  params.set("id", pmids.join(","));
+  params.set("retmode", "xml");
+  params.set("rettype", "abstract");
+
+  const apiKey = process.env.NCBI_API_KEY;
+  if (apiKey) params.set("api_key", apiKey);
+
+  const url = `${EFETCH}?${params.toString()}`;
+  const res = await fetchWithRetry(url);
+  if (!res.ok) {
+    return {};
+  }
+
+  const xml = await res.text();
+  const abstracts: Record<string, string> = {};
+
+  // Simple regex parsing of PubMed XML to extract abstract
+  const articleRegex = /<PubmedArticle>(.*?)<\/PubmedArticle>/gs;
+  let match;
+  while ((match = articleRegex.exec(xml)) !== null) {
+    const articleXml = match[1];
+    const pmidMatch = /<PMID[^>]*>(\d+)<\/PMID>/.exec(articleXml);
+    if (!pmidMatch) continue;
+    
+    const pmid = pmidMatch[1];
+    const abstractVals: string[] = [];
+    
+    const abstractMatch = /<Abstract>(.*?)<\/Abstract>/s.exec(articleXml);
+    if (abstractMatch) {
+      const textRegex = /<AbstractText[^>]*>(.*?)<\/AbstractText>/gs;
+      let textMatch;
+      while ((textMatch = textRegex.exec(abstractMatch[1])) !== null) {
+        abstractVals.push(textMatch[1].replace(/<\/?[^>]+(>|$)/g, "").trim());
+      }
+    }
+    
+    if (abstractVals.length > 0) {
+      abstracts[pmid] = abstractVals.join("\n\n");
+    }
+  }
+  
+  return abstracts;
 }
 
 interface ESummaryResult {

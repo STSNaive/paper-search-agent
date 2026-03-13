@@ -1,0 +1,10 @@
+﻿src/adapters/discovery/search-hub.ts(7,33): error TS2307: Cannot find module './europe-pmc.js' or its corresponding type declarations.
+src/adapters/discovery/search-hub.ts(50,15): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/adapters/discovery/search-hub.ts(51,16): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/tools/definitions.ts(309,13): error TS2322: Type '{ type: string; }' is not assignable to type '{ type: string; description: string; } | { type: string; description: string; } | { type: string; description: string; } | { type: string; description: string; } | undefined'.
+  Property 'description' is missing in type '{ type: string; }' but required in type '{ type: string; description: string; }'.
+src/tools/definitions.ts(310,13): error TS2322: Type '{ type: string; }' is not assignable to type '{ type: string; description: string; } | { type: string; description: string; } | undefined'.
+  Property 'description' is missing in type '{ type: string; }' but required in type '{ type: string; description: string; }'.
+src/tools/definitions.ts(311,13): error TS2322: Type '{ type: string; }' is not assignable to type '{ type: string; description: string; } | { type: string; description: string; } | undefined'.
+  Property 'description' is missing in type '{ type: string; }' but required in type '{ type: string; description: string; }'.
+src/tools/handlers/planning.ts(3,10): error TS2305: Module '"../../adapters/discovery/crossref.js"' has no exported member 'resolveDoi'.

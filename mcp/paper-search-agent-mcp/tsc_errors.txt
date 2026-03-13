@@ -1,0 +1,8 @@
+﻿src/tools/handlers/parsing.ts(26,5): error TS2554: Expected 3 arguments, but got 2.
+src/tools/handlers/parsing.ts(43,18): error TS2554: Expected 2 arguments, but got 1.
+src/tools/index_old.ts(654,30): error TS2554: Expected 1 arguments, but got 0.
+src/tools/index_old.ts(656,47): error TS2554: Expected 2 arguments, but got 1.
+src/tools/index_old.ts(663,22): error TS2554: Expected 5 arguments, but got 4.
+src/tools/index_old.ts(670,17): error TS2554: Expected 3 arguments, but got 2.
+src/tools/index_old.ts(675,18): error TS2554: Expected 2 arguments, but got 1.
+src/tools/index_old.ts(866,14): error TS2554: Expected 2 arguments, but got 1.

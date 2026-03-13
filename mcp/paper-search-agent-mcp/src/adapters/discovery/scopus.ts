@@ -6,6 +6,7 @@
 
 import type { CandidatePaper } from "../../schemas/index.js";
 import { publisherFromDoiPrefix } from "../../utils/doi.js";
+import { fetchWithRetry } from "../../utils/http.js";
 
 const BASE = "https://api.elsevier.com/content/search/scopus";
 
@@ -38,7 +39,7 @@ export async function searchScopus(
   params.set("sort", "relevancy");
 
   const url = `${BASE}?${params.toString()}`;
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     headers: {
       Accept: "application/json",
       "X-ELS-APIKey": apiKey,

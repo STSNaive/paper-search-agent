@@ -5,6 +5,7 @@
  *
  * API docs: https://www.zotero.org/support/dev/web_api/v3/basics
  */
+import { fetchWithRetry } from "../../utils/http.js";
 
 const ZOTERO_API_BASE = "https://api.zotero.org";
 
@@ -121,7 +122,7 @@ export async function zoteroLookup(
   if (opts.doi) {
     // Try search with DOI string
     const searchUrl = `${ZOTERO_API_BASE}/${prefix}/items?q=${encodeURIComponent(opts.doi)}&qmode=everything&limit=50&format=json`;
-    const resp = await fetch(searchUrl, { headers: headers(cfg) });
+    const resp = await fetchWithRetry(searchUrl, { headers: headers(cfg) });
     if (resp.ok) {
       const raw = (await resp.json()) as Array<Record<string, unknown>>;
       items = parseItems(raw);
@@ -135,7 +136,7 @@ export async function zoteroLookup(
     // If not found, try fetching recent items (sorted by dateModified) and filter
     if (matched.length === 0) {
       const recentUrl = `${ZOTERO_API_BASE}/${prefix}/items?sort=dateModified&direction=desc&limit=100&format=json`;
-      const resp2 = await fetch(recentUrl, { headers: headers(cfg) });
+      const resp2 = await fetchWithRetry(recentUrl, { headers: headers(cfg) });
       if (resp2.ok) {
         const raw2 = (await resp2.json()) as Array<Record<string, unknown>>;
         const recentItems = parseItems(raw2);
@@ -156,7 +157,7 @@ export async function zoteroLookup(
     }
 
     const url = `${ZOTERO_API_BASE}/${prefix}/items?q=${encodeURIComponent(qParam)}&qmode=titleCreatorYear&limit=25&format=json`;
-    const resp = await fetch(url, { headers: headers(cfg) });
+    const resp = await fetchWithRetry(url, { headers: headers(cfg) });
     if (!resp.ok) {
       throw new Error(`Zotero API error: ${resp.status} ${resp.statusText}`);
     }
@@ -175,7 +176,7 @@ export async function zoteroLookup(
   if (filtered.length > 0) {
     const childrenUrl = `${ZOTERO_API_BASE}/${prefix}/items/${filtered[0].key}/children?format=json`;
     try {
-      const childResp = await fetch(childrenUrl, { headers: headers(cfg) });
+      const childResp = await fetchWithRetry(childrenUrl, { headers: headers(cfg) });
       if (childResp.ok) {
         const children = (await childResp.json()) as Array<Record<string, unknown>>;
         for (const child of children) {
@@ -211,7 +212,7 @@ export async function zoteroListCollections(
   const prefix = libraryPrefix(cfg);
   const url = `${ZOTERO_API_BASE}/${prefix}/collections?format=json&limit=100`;
 
-  const resp = await fetch(url, { headers: headers(cfg) });
+  const resp = await fetchWithRetry(url, { headers: headers(cfg) });
   if (!resp.ok) {
     throw new Error(`Zotero API error: ${resp.status} ${resp.statusText}`);
   }
@@ -276,7 +277,7 @@ export async function zoteroSave(
   };
 
   const url = `${ZOTERO_API_BASE}/${prefix}/items`;
-  const resp = await fetch(url, {
+  const resp = await fetchWithRetry(url, {
     method: "POST",
     headers: headers(cfg),
     body: JSON.stringify([itemData]),

@@ -10,8 +10,9 @@ import { parse as parseToml } from "toml";
 
 // ── Section interfaces ────────────────────────────────────────────
 
-export interface RuntimeConfig {
-  agent_backend: "codex" | "claude";
+export interface PathConfig {
+  cache_dir: string;
+  corpus_dir: string;
 }
 
 export interface DiscoveryConfig {
@@ -50,18 +51,21 @@ export interface TokenBudgetConfig {
 }
 
 export interface AppConfig {
-  runtime: RuntimeConfig;
   discovery: DiscoveryConfig;
   retrieval: RetrievalConfig;
   integrations: IntegrationsConfig;
   browser: BrowserConfig;
   token_budget: TokenBudgetConfig;
+  paths: PathConfig;
 }
 
 // ── Defaults ──────────────────────────────────────────────────────
 
 const DEFAULTS: AppConfig = {
-  runtime: { agent_backend: "codex" },
+  paths: {
+    cache_dir: "./cache",
+    corpus_dir: "./corpus",
+  },
   discovery: {
     openalex: true,
     crossref: true,
@@ -114,12 +118,12 @@ export function loadConfig(configPath?: string): AppConfig {
   }
 
   return {
-    runtime: { ...DEFAULTS.runtime, ...(raw.runtime as Partial<RuntimeConfig>) },
     discovery: { ...DEFAULTS.discovery, ...(raw.discovery as Partial<DiscoveryConfig>) },
     retrieval: { ...DEFAULTS.retrieval, ...(raw.retrieval as Partial<RetrievalConfig>) },
     integrations: { ...DEFAULTS.integrations, ...(raw.integrations as Partial<IntegrationsConfig>) },
     browser: { ...DEFAULTS.browser, ...(raw.browser as Partial<BrowserConfig>) },
     token_budget: { ...DEFAULTS.token_budget, ...(raw.token_budget as Partial<TokenBudgetConfig>) },
+    paths: { ...DEFAULTS.paths, ...(raw.paths as Partial<PathConfig>) },
   };
 }
 

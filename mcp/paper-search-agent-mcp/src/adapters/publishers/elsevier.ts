@@ -6,6 +6,7 @@
  * Entitlement path: personal API key + campus-network IP.
  * Without campus-network entitlement, only abstracts may be returned.
  */
+import { fetchWithRetry } from "../../utils/http.js";
 
 const BASE = "https://api.elsevier.com/content/article/doi";
 
@@ -27,7 +28,7 @@ export async function preflightElsevier(
 ): Promise<{ entitled: boolean; reason: string }> {
   const url = `${BASE}/${encodeURIComponent(doi)}`;
 
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     method: "GET",
     headers: {
       "X-ELS-APIKey": apiKey,
@@ -95,7 +96,7 @@ async function fetchElsevierFormat(
 ): Promise<ElsevierRetrievalResult> {
   const url = `${BASE}/${encodeURIComponent(doi)}`;
 
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     headers: {
       "X-ELS-APIKey": apiKey,
       Accept: accept,

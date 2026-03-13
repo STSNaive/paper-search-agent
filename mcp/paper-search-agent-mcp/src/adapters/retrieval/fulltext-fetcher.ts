@@ -19,6 +19,7 @@ import { fetchWileyTdm } from "../publishers/wiley.js";
 import { zoteroLookup, loadZoteroConfig } from "../integrations/zotero.js";
 import { cacheArtifact } from "../storage/local-store.js";
 import { logAttempts } from "../../utils/audit-log.js";
+import { fetchWithRetry } from "../../utils/http.js";
 
 export interface FetchResult {
   success: boolean;
@@ -37,7 +38,7 @@ export interface FetchResult {
 export async function fetchFulltext(
   plan: AccessPlan,
   config: AppConfig,
-  cacheDir: string = "./cache",
+  cacheDir: string,
   routeOverride?: string,
 ): Promise<FetchResult> {
   const routes = routeOverride
@@ -350,7 +351,7 @@ async function executeSpringerOa(
 
   // Try JSON wrapper first
   let body: string | null = null;
-  const jsonRes = await fetch(jsonUrl, { headers: { Accept: "application/json" } });
+  const jsonRes = await fetchWithRetry(jsonUrl, { headers: { Accept: "application/json" } });
   if (jsonRes.ok) {
     try {
       const data = (await jsonRes.json()) as { records?: { body?: string }[] };
@@ -362,7 +363,7 @@ async function executeSpringerOa(
 
   // Fallback: raw JATS XML
   if (!body) {
-    const jatsRes = await fetch(jatsUrl);
+    const jatsRes = await fetchWithRetry(jatsUrl);
     if (jatsRes.ok) {
       const xml = await jatsRes.text();
       if (xml.length > 200) {
@@ -496,7 +497,7 @@ async function downloadPdf(
   doi: string,
   cacheDir: string,
 ): Promise<RouteResult> {
-  const res = await fetch(pdfUrl, {
+  const res = await fetchWithRetry(pdfUrl, {
     redirect: "follow",
     headers: { Accept: "application/pdf, */*" },
   });

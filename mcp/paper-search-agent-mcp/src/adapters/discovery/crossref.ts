@@ -6,6 +6,7 @@
 
 import type { CandidatePaper } from "../../schemas/index.js";
 import { publisherFromDoiPrefix } from "../../utils/doi.js";
+import { fetchWithRetry } from "../../utils/http.js";
 
 const BASE = "https://api.crossref.org";
 
@@ -37,7 +38,7 @@ export async function searchCrossref(
   if (email) params.set("mailto", email);
 
   const url = `${BASE}/works?${params.toString()}`;
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     headers: { Accept: "application/json" },
   });
   if (!res.ok) {
@@ -60,7 +61,7 @@ export async function resolveDoiViaCrossref(
   if (email) params.set("mailto", email);
 
   const url = `${BASE}/works/${encodeURIComponent(doi)}?${params.toString()}`;
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     headers: { Accept: "application/json" },
   });
   if (res.status === 404) return null;

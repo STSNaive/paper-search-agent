@@ -1,0 +1,13 @@
+﻿src/tools/definitions.ts(309,13): error TS2322: Type '{ type: string; }' is not assignable to type '{ type: string; description: string; } | { type: string; description: string; } | { type: string; description: string; } | { type: string; description: string; } | undefined'.
+  Property 'description' is missing in type '{ type: string; }' but required in type '{ type: string; description: string; }'.
+src/tools/definitions.ts(310,13): error TS2322: Type '{ type: string; }' is not assignable to type '{ type: string; description: string; } | { type: string; description: string; } | undefined'.
+  Property 'description' is missing in type '{ type: string; }' but required in type '{ type: string; description: string; }'.
+src/tools/definitions.ts(311,13): error TS2322: Type '{ type: string; }' is not assignable to type '{ type: string; description: string; } | { type: string; description: string; } | undefined'.
+  Property 'description' is missing in type '{ type: string; }' but required in type '{ type: string; description: string; }'.
+src/tools/handlers/discovery.ts(3,34): error TS2307: Cannot find module '../../adapters/discovery/index.js' or its corresponding type declarations.
+src/tools/handlers/planning.ts(3,10): error TS2305: Module '"../../adapters/discovery/crossref.js"' has no exported member 'resolveDoi'.
+src/tools/handlers/retrieval.ts(27,54): error TS2339: Property 'local_path' does not exist on type 'FetchResult'.
+src/tools/handlers/retrieval.ts(36,49): error TS2339: Property 'local_path' does not exist on type 'FetchResult'.
+src/tools/handlers/retrieval.ts(36,113): error TS2339: Property 'metadata' does not exist on type 'AccessPlan'.
+src/tools/handlers/retrieval.ts(55,63): error TS2339: Property 'local_path' does not exist on type 'FetchResult'.
+src/tools/handlers/storage.ts(5,32): error TS2459: Module '"../../adapters/storage/local-store.js"' declares 'NormalizedPaperRecord' locally, but it is not exported.
