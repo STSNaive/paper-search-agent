@@ -78,7 +78,9 @@ function parseXml(
     metadata?.title ?? "Untitled";
 
   // Extract abstract
-  const abstract = extractXmlTag(raw, "abstract");
+  const abstract = extractXmlTag(raw, "abstract")
+    ?? extractXmlTag(raw, "ce:abstract")
+    ?? extractXmlTag(raw, "dc:description");
   if (abstract) {
     sections["abstract"] = cleanXmlText(abstract);
   }
@@ -111,6 +113,16 @@ function parseXml(
     const body = extractXmlTag(raw, "body") ?? extractXmlTag(raw, "ce:sections");
     if (body) {
       sections["body"] = cleanXmlText(body);
+    }
+  }
+
+  // Elsevier FULL view can place the readable article text under originalText.
+  // If we still have no body-like content, extract a cleaned fallback from there.
+  if (Object.keys(sections).length <= 1) {
+    const originalText = extractXmlTag(raw, "originalText");
+    const fallbackBody = originalText ? extractElsevierOriginalText(originalText) : null;
+    if (fallbackBody && fallbackBody.length > 200) {
+      sections["body"] = fallbackBody;
     }
   }
 
@@ -294,7 +306,23 @@ function extractXmlAuthors(xml: string): string[] {
       authors.push(`${cleanXmlText(match[1])} ${cleanXmlText(match[2])}`);
     }
   }
+  if (authors.length === 0) {
+    const creatorRegex = /<dc:creator>([\s\S]*?)<\/dc:creator>/gi;
+    while ((match = creatorRegex.exec(xml)) !== null) {
+      const name = cleanXmlText(match[1]);
+      if (name) authors.push(name);
+    }
+  }
   return authors;
+}
+
+function extractElsevierOriginalText(xml: string): string | null {
+  const withoutMeta = xml
+    .replace(/<xocs:meta[\s\S]*?<\/xocs:meta>/gi, " ")
+    .replace(/<object[\s\S]*?<\/object>/gi, " ")
+    .replace(/<link\b[^>]*\/?>/gi, " ");
+  const cleaned = cleanXmlText(withoutMeta);
+  return cleaned.length > 200 ? cleaned : null;
 }
 
 function extractXmlYear(xml: string): number | null {

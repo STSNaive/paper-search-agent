@@ -4,7 +4,7 @@
  * Docs: https://dev.elsevier.com/documentation/ArticleRetrievalAPI.wadl
  *
  * Entitlement path: personal API key + campus-network IP.
- * Without campus-network entitlement, only abstracts may be returned.
+ * Without campus-network entitlement, abstract-level XML may be returned.
  */
 import { fetchWithRetry } from "../../utils/http.js";
 
@@ -20,13 +20,14 @@ export interface ElsevierRetrievalResult {
 
 /**
  * Preflight check: verify that entitlement exists for a given DOI.
- * Uses a HEAD request to avoid downloading the full content.
+ * Uses a GET request because Elsevier's response shape tells us whether
+ * the FULL view actually contains article-body data.
  */
 export async function preflightElsevier(
   doi: string,
   apiKey: string,
 ): Promise<{ entitled: boolean; reason: string }> {
-  const url = `${BASE}/${encodeURIComponent(doi)}`;
+  const url = buildElsevierArticleUrl(doi);
 
   const res = await fetchWithRetry(url, {
     method: "GET",
@@ -37,21 +38,21 @@ export async function preflightElsevier(
   });
 
   if (res.ok) {
-    // Check if the response contains full text or just abstract
-    const data = (await res.json()) as ElsevierArticleResponse;
-    const coredata = data["full-text-retrieval-response"]?.coredata;
-    if (coredata) {
-      return { entitled: true, reason: "Full text accessible" };
+    const payload = JSON.stringify(await res.json());
+    if (hasElsevierFullText(payload)) {
+      return { entitled: true, reason: "FULL view contains article-body data" };
     }
-    // Might have gotten just metadata/abstract
-    return { entitled: false, reason: "Response lacks full text — likely abstract only" };
+    if (hasElsevierAbstract(payload)) {
+      return { entitled: false, reason: "Elsevier returned abstract-level metadata only" };
+    }
+    return { entitled: false, reason: "Elsevier response lacks recognizable full-text markers" };
   }
 
   if (res.status === 401) {
     return { entitled: false, reason: "Invalid API key (401)" };
   }
   if (res.status === 403) {
-    return { entitled: false, reason: "Not entitled — campus-network access may be required (403)" };
+    return { entitled: false, reason: "Not entitled; campus-network access may be required (403)" };
   }
   if (res.status === 404) {
     return { entitled: false, reason: "DOI not found in Elsevier (404)" };
@@ -71,15 +72,12 @@ export async function fetchElsevierFulltext(
   doi: string,
   apiKey: string,
 ): Promise<ElsevierRetrievalResult> {
-  // Try XML first (richest format)
   const xmlResult = await fetchElsevierFormat(doi, apiKey, "text/xml");
   if (xmlResult.success) return xmlResult;
 
-  // Fall back to plain text
   const textResult = await fetchElsevierFormat(doi, apiKey, "text/plain");
   if (textResult.success) return textResult;
 
-  // Both failed
   return {
     success: false,
     content: null,
@@ -94,7 +92,7 @@ async function fetchElsevierFormat(
   apiKey: string,
   accept: "text/xml" | "text/plain",
 ): Promise<ElsevierRetrievalResult> {
-  const url = `${BASE}/${encodeURIComponent(doi)}`;
+  const url = buildElsevierArticleUrl(doi);
 
   const res = await fetchWithRetry(url, {
     headers: {
@@ -121,24 +119,50 @@ async function fetchElsevierFormat(
       content: null,
       content_type: null,
       entitled: true,
-      error: "Response too short — may be abstract only",
+      error: "Response too short; may be abstract only",
     };
   }
 
-  const contentType: "xml" | "text" = accept === "text/xml" ? "xml" : "text";
+  if (accept === "text/xml" && !hasElsevierFullText(content)) {
+    return {
+      success: false,
+      content: null,
+      content_type: null,
+      entitled: true,
+      error: hasElsevierAbstract(content)
+        ? "Elsevier API returned abstract-level XML only; FULL view did not include article body."
+        : "Elsevier API XML lacks article-body markers.",
+    };
+  }
+
   return {
     success: true,
     content,
-    content_type: contentType,
+    content_type: accept === "text/xml" ? "xml" : "text",
     entitled: true,
     error: null,
   };
 }
 
-// ── Internal types ────────────────────────────────────────────────
+function buildElsevierArticleUrl(doi: string): string {
+  const url = new URL(`${BASE}/${encodeURIComponent(doi)}`);
+  // Official docs expose multiple Article Retrieval views. FULL is required
+  // when we want the response to contain body-level content instead of metadata.
+  url.searchParams.set("view", "FULL");
+  return url.toString();
+}
 
-interface ElsevierArticleResponse {
-  "full-text-retrieval-response"?: {
-    coredata?: Record<string, unknown>;
-  };
+function hasElsevierFullText(xml: string): boolean {
+  return [
+    /<body\b/i,
+    /<ce:sections?\b/i,
+    /<ce:section\b/i,
+    /<ce:para\b/i,
+    /<xocs:item-weight>\s*FULL-TEXT\s*<\/xocs:item-weight>/i,
+    /<xocs:rawtext\b/i,
+  ].some((pattern) => pattern.test(xml));
+}
+
+function hasElsevierAbstract(xml: string): boolean {
+  return /<dc:description\b/i.test(xml) || /<abstract\b/i.test(xml);
 }
