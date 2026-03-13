@@ -35,7 +35,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/STSNana/paper-search-agent.git"
+    "url": "https://github.com/STSNaive/paper-search-agent.git"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

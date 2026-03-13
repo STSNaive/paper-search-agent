@@ -72,7 +72,7 @@ This mode matches the real project architecture: root `AGENTS.md` + `skills/` + 
 
 ```bash
 # 1. Clone
-git clone https://github.com/STSNana/paper-search-agent.git
+git clone https://github.com/STSNaive/paper-search-agent.git
 cd paper-search-agent
 
 # 2. Environment
