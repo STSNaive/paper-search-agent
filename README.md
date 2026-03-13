@@ -70,16 +70,15 @@ This separation is intentional: discovery does not imply full-text entitlement.
 
 This mode matches the real project architecture: root `AGENTS.md` + `skills/` + local MCP server.
 
+Linux/macOS:
+
 ```bash
 # 1. Clone
 git clone https://github.com/STSNaive/paper-search-agent.git
 cd paper-search-agent
 
 # 2. Environment
-# Linux/macOS:
 cp .env.example .env
-# Windows PowerShell:
-# Copy-Item .env.example .env
 
 # 3. Build MCP server
 cd mcp/paper-search-agent-mcp
@@ -88,28 +87,50 @@ npm run build
 cd ../..
 ```
 
-Configure Codex MCP (for example in your Codex MCP config):
+Windows PowerShell:
 
-```json
-{
-  "mcpServers": {
-    "paper-search-agent": {
-      "command": "node",
-      "args": ["mcp/paper-search-agent-mcp/dist/server.js"],
-      "cwd": "."
-    }
-  }
-}
+```powershell
+# 1. Clone
+git clone https://github.com/STSNaive/paper-search-agent.git
+cd paper-search-agent
+
+# 2. Environment
+Copy-Item .env.example .env
+
+# 3. Build MCP server
+cd mcp/paper-search-agent-mcp
+npm install
+npm run build
+cd ../..
 ```
 
-Then create your runtime config (copy from example and edit):
+Create runtime config for this MCP server:
 
 ```bash
 # Linux/macOS:
 cp mcp/paper-search-agent-mcp/config.toml.example mcp/paper-search-agent-mcp/config.toml
-# Windows PowerShell:
-# Copy-Item mcp/paper-search-agent-mcp/config.toml.example mcp/paper-search-agent-mcp/config.toml
 ```
+
+```powershell
+Copy-Item mcp/paper-search-agent-mcp/config.toml.example mcp/paper-search-agent-mcp/config.toml
+```
+
+Configure Codex MCP in `.codex/config.toml` (project-scoped) or `~/.codex/config.toml` (global):
+
+```toml
+[mcp_servers.paper_search_agent]
+command = "node"
+args = ["dist/server.js"]
+cwd = "mcp/paper-search-agent-mcp"
+```
+
+You can also add it with the Codex CLI:
+
+```bash
+codex mcp add paper_search_agent -- node mcp/paper-search-agent-mcp/dist/server.js
+```
+
+If you use the Codex IDE extension, it reads the same Codex config file.
 
 ### Option B: Install MCP server package via npm
 
@@ -148,12 +169,12 @@ Note: npm package mode installs the MCP server binary. The root workspace resour
 ```
 paper-search-agent/
 ├── AGENTS.md              # Codex root agent instructions (single agent)
-├── design-plan.md         # Full architecture and rationale
+├── ARCHITECTURE.md        # System architecture overview
 ├── .env.example           # API key template
 ├── skills/                # Domain knowledge (Agent Skills standard)
 ├── mcp/                   # MCP server (Node.js + TypeScript)
-├── schemas/               # Shared schema documentation
 ├── scripts/               # Compatibility & utility scripts
+├── docs/                  # Archived design docs (git-ignored)
 ├── cache/                 # Local cache (git-ignored)
 ├── corpus/                # Paper corpus (git-ignored)
 └── artifacts/             # Downloaded artifacts (git-ignored)
@@ -171,9 +192,9 @@ Key sections:
 - `[browser]` — browser state management
 - `[token_budget]` — LLM context management
 
-## Design
+## Architecture
 
-See [design-plan.md](design-plan.md) for the full architecture and rationale.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the system design overview.
 
 ## License
 

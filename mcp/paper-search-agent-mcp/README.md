@@ -20,6 +20,21 @@ npx paper-search-agent-mcp
 
 ### MCP Client Setup
 
+For Codex CLI / Codex IDE, configure MCP in `.codex/config.toml` (project-scoped) or `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.paper_search_agent]
+command = "paper-search-agent-mcp"
+```
+
+Or add it via CLI:
+
+```bash
+codex mcp add paper_search_agent -- paper-search-agent-mcp
+```
+
+For other clients that use JSON-based MCP config, use:
+
 Add the server to your AI assistant's MCP configuration:
 
 ```json
