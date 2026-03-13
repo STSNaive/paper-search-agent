@@ -17,7 +17,7 @@ import { fetchElsevierFulltext } from "../publishers/elsevier.js";
 import { browserRetrieve } from "../browser/playwright-retriever.js";
 import { fetchWileyTdm } from "../publishers/wiley.js";
 import { zoteroLookup, loadZoteroConfig } from "../integrations/zotero.js";
-import { cacheArtifact } from "../storage/local-store.js";
+import { cacheArtifact, checkCache } from "../storage/local-store.js";
 import { logAttempts } from "../../utils/audit-log.js";
 import { fetchWithRetry } from "../../utils/http.js";
 
@@ -68,7 +68,6 @@ export async function fetchFulltext(
       attempts.push(attempt);
 
       if (result.success) {
-        // Cache the artifact
         if (plan.doi && result.artifact_path && result.artifact_type) {
           cacheArtifact(plan.doi, result.artifact_path, result.artifact_type, cacheDir);
         }
@@ -84,7 +83,7 @@ export async function fetchFulltext(
           error: null,
         };
       }
-    } catch (e) {
+    } catch (error) {
       attempts.push({
         paper_id: plan.paper_id,
         doi: plan.doi,
@@ -92,7 +91,7 @@ export async function fetchFulltext(
         timestamp: new Date().toISOString(),
         success: false,
         status_code: null,
-        error: (e as Error).message,
+        error: (error as Error).message,
         artifact_path: null,
         artifact_type: null,
         duration_ms: Date.now() - start,
@@ -155,7 +154,7 @@ async function executeRoute(
       };
     case "browser_download_pdf":
     case "browser_capture_html":
-      return executeBrowserRoute(plan, cacheDir);
+      return executeBrowserRoute(plan, cacheDir, config.browser.state_directory);
     default:
       return {
         success: false,
@@ -174,8 +173,6 @@ function artifactDir(doi: string | null, cacheDir: string): string {
   return dir;
 }
 
-// ── Route implementations ─────────────────────────────────────────
-
 async function executeLocalCache(
   plan: AccessPlan,
   cacheDir: string,
@@ -183,18 +180,19 @@ async function executeLocalCache(
   if (!plan.doi) {
     return { success: false, artifact_path: null, artifact_type: null, source_url: null, error: "No DOI for cache lookup" };
   }
-  const safeDoi = doiToSafePath(plan.doi);
-  const dir = resolve(cacheDir, safeDoi);
-  if (existsSync(dir)) {
-    return {
-      success: true,
-      artifact_path: dir,
-      artifact_type: plan.expected_output,
-      source_url: null,
-      error: null,
-    };
+
+  const cache = checkCache(plan.doi, cacheDir);
+  if (!cache.found || !cache.path) {
+    return { success: false, artifact_path: null, artifact_type: null, source_url: null, error: "Cache miss" };
   }
-  return { success: false, artifact_path: null, artifact_type: null, source_url: null, error: "Cache miss" };
+
+  return {
+    success: true,
+    artifact_path: cache.path,
+    artifact_type: (cache.entry?.artifact_type as "pdf" | "xml" | "html" | "text" | null) ?? plan.expected_output,
+    source_url: null,
+    error: null,
+  };
 }
 
 async function executeZoteroExisting(
@@ -213,18 +211,19 @@ async function executeZoteroExisting(
     return { success: false, artifact_path: null, artifact_type: null, source_url: null, error: "Paper not found in Zotero library" };
   }
 
-  // Found the item — report it. Note: Zotero Web API doesn't provide
-  // direct file download for PDF attachments without Zotero desktop.
-  // We report the match so the user knows it's in their library.
   const itemKey = result.items[0]?.key;
+  const itemUrl = itemKey
+    ? `https://www.zotero.org/${cfg.libraryType}s/${cfg.libraryId}/items/${itemKey}`
+    : null;
+
   return {
-    success: result.has_pdf,
+    success: false,
     artifact_path: null,
-    artifact_type: result.has_pdf ? "pdf" : null,
-    source_url: `https://www.zotero.org/${cfg.libraryType}s/${cfg.libraryId}/items/${itemKey}`,
+    artifact_type: null,
+    source_url: itemUrl,
     error: result.has_pdf
-      ? null
-      : "Paper found in Zotero but no PDF attachment. Falling back to next route.",
+      ? "Paper was found in Zotero with a PDF attachment, but the Zotero Web API cannot provide a local artifact path. Export or open the attachment locally, then use import_local_file."
+      : "Paper found in Zotero but no downloadable PDF attachment was exposed. Falling back to the next route.",
   };
 }
 
@@ -268,7 +267,6 @@ async function executeEuropePmc(
     return { success: false, artifact_path: null, artifact_type: null, source_url: null, error: "No DOI" };
   }
 
-  // Find PMC ID first
   const check = await checkEuropePmcFulltext(plan.doi);
   if (!check.available || !check.pmcId) {
     return { success: false, artifact_path: null, artifact_type: null, source_url: null, error: "Not available in Europe PMC" };
@@ -317,8 +315,8 @@ async function executeElsevier(
   }
 
   const dir = artifactDir(plan.doi, cacheDir);
-  const ext = result.content_type === "xml" ? "xml" : "txt";
-  const filePath = join(dir, `fulltext.${ext}`);
+  const extension = result.content_type === "xml" ? "xml" : "txt";
+  const filePath = join(dir, `fulltext.${extension}`);
   writeFileSync(filePath, result.content, "utf-8");
 
   return {
@@ -338,18 +336,14 @@ async function executeSpringerOa(
     return { success: false, artifact_path: null, artifact_type: null, source_url: null, error: "No DOI" };
   }
 
-  // Springer OA API uses a separate key from Meta API
   const apiKey = process.env.SPRINGER_OA_API_KEY ?? process.env.SPRINGER_API_KEY;
   if (!apiKey) {
     return { success: false, artifact_path: null, artifact_type: null, source_url: null, error: "SPRINGER_OA_API_KEY not configured" };
   }
 
-  // Springer OpenAccess API — only for OA content
-  // Try JSON endpoint first (wraps JATS in JSON), fallback to raw JATS
   const jsonUrl = `https://api.springernature.com/openaccess/json?q=doi:${encodeURIComponent(plan.doi)}&api_key=${encodeURIComponent(apiKey)}`;
   const jatsUrl = `https://api.springernature.com/openaccess/jats?q=doi:${encodeURIComponent(plan.doi)}&api_key=${encodeURIComponent(apiKey)}`;
 
-  // Try JSON wrapper first
   let body: string | null = null;
   const jsonRes = await fetchWithRetry(jsonUrl, { headers: { Accept: "application/json" } });
   if (jsonRes.ok) {
@@ -357,11 +351,10 @@ async function executeSpringerOa(
       const data = (await jsonRes.json()) as { records?: { body?: string }[] };
       body = data.records?.[0]?.body ?? null;
     } catch {
-      // JSON parse failed — try JATS endpoint
+      body = null;
     }
   }
 
-  // Fallback: raw JATS XML
   if (!body) {
     const jatsRes = await fetchWithRetry(jatsUrl);
     if (jatsRes.ok) {
@@ -391,8 +384,6 @@ async function executeSpringerOa(
   };
 }
 
-// ── Wiley TDM route ───────────────────────────────────────────────
-
 async function executeWileyTdm(
   plan: AccessPlan,
   cacheDir: string,
@@ -403,9 +394,8 @@ async function executeWileyTdm(
 
   const result = await fetchWileyTdm(plan.doi);
   if (!result.success || !result.content) {
-    // Include TDM links in the error so the caller can try browser route
     const linksHint = result.tdm_links?.length
-      ? ` TDM links for browser fallback: ${result.tdm_links.map((l) => l.url).join(", ")}`
+      ? ` TDM links for browser fallback: ${result.tdm_links.map((link) => link.url).join(", ")}`
       : "";
     return {
       success: false,
@@ -419,7 +409,6 @@ async function executeWileyTdm(
   const dir = artifactDir(plan.doi, cacheDir);
 
   if (result.content_type === "pdf") {
-    // Content is base64-encoded PDF
     const filePath = join(dir, "fulltext.pdf");
     writeFileSync(filePath, Buffer.from(result.content, "base64"));
     return {
@@ -431,7 +420,6 @@ async function executeWileyTdm(
     };
   }
 
-  // Default: XML or text
   const filePath = join(dir, "fulltext.xml");
   writeFileSync(filePath, result.content, "utf-8");
   return {
@@ -443,13 +431,11 @@ async function executeWileyTdm(
   };
 }
 
-// ── Browser route ─────────────────────────────────────────────────
-
 async function executeBrowserRoute(
   plan: AccessPlan,
   cacheDir: string,
+  stateDirectory: string,
 ): Promise<RouteResult> {
-  // Build URL from DOI landing page
   const url = plan.doi
     ? `https://doi.org/${plan.doi}`
     : null;
@@ -458,10 +444,9 @@ async function executeBrowserRoute(
     return { success: false, artifact_path: null, artifact_type: null, source_url: null, error: "No DOI for browser route" };
   }
 
-  const result = await browserRetrieve(url, "./browser-state", cacheDir, plan.doi ?? null, "navigate");
+  const result = await browserRetrieve(url, stateDirectory, cacheDir, plan.doi ?? null, "navigate");
 
   if (result.needs_human_interaction) {
-    // Return a special result — the caller (LLM) must relay this to the user
     return {
       success: false,
       artifact_path: null,
@@ -490,8 +475,6 @@ async function executeBrowserRoute(
   };
 }
 
-// ── Shared helpers ────────────────────────────────────────────────
-
 async function downloadPdf(
   pdfUrl: string,
   doi: string,
@@ -514,8 +497,6 @@ async function downloadPdf(
 
   const contentType = res.headers.get("content-type") ?? "";
   const buffer = Buffer.from(await res.arrayBuffer());
-
-  // Determine if we got a PDF or HTML
   const isPdf = contentType.includes("pdf") || buffer.slice(0, 5).toString() === "%PDF-";
   const dir = artifactDir(doi, cacheDir);
   const filename = isPdf ? "fulltext.pdf" : "fulltext.html";
@@ -544,17 +525,17 @@ export function importLocalFile(
     throw new Error(`File not found: ${filePath}`);
   }
 
-  const ext = extname(filePath).toLowerCase().replace(".", "");
-  const artifactType = ext === "pdf" ? "pdf" : ext === "xml" ? "xml" : ext === "html" ? "html" : "text";
+  const extension = extname(filePath).toLowerCase().replace(".", "");
+  const artifactType = extension === "pdf" ? "pdf" : extension === "xml" ? "xml" : extension === "html" ? "html" : "text";
   const paperId = doi ?? `local:${title ?? filePath}`;
 
   const dir = artifactDir(doi, cacheDir);
-  const destPath = join(dir, `fulltext.${ext || "txt"}`);
-  copyFileSync(filePath, destPath);
+  const destinationPath = join(dir, `fulltext.${extension || "txt"}`);
+  copyFileSync(filePath, destinationPath);
 
   if (doi) {
-    cacheArtifact(doi, destPath, artifactType, cacheDir);
+    cacheArtifact(doi, destinationPath, artifactType, cacheDir);
   }
 
-  return { artifact_path: destPath, artifact_type: artifactType, paper_id: paperId };
+  return { artifact_path: destinationPath, artifact_type: artifactType, paper_id: paperId };
 }

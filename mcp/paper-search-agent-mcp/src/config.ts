@@ -114,7 +114,7 @@ export function loadConfig(configPath?: string): AppConfig {
     const content = readFileSync(resolvedPath, "utf-8");
     raw = parseToml(content) as Record<string, unknown>;
   } catch {
-    // Config file missing or unreadable â€” use defaults
+    // Config file missing or unreadable â€?use defaults
   }
 
   return {
@@ -136,9 +136,18 @@ export function enabledDiscoverySources(config: AppConfig): string[] {
     .map(([name]) => name);
 }
 
+/**
+ * Return the subset of enabled discovery sources that support keyword search.
+ * Unpaywall is DOI lookup only, so it should not be exposed via search tools.
+ */
+export function enabledSearchDiscoverySources(config: AppConfig): string[] {
+  return enabledDiscoverySources(config).filter((name) => name !== "unpaywall");
+}
+
 /** Return the list of enabled retrieval route names. */
 export function enabledRetrievalRoutes(config: AppConfig): string[] {
   return Object.entries(config.retrieval)
     .filter(([, enabled]) => enabled)
     .map(([name]) => name);
 }
+

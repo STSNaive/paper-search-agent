@@ -46,6 +46,7 @@ describe("Elsevier retrieval", () => {
         }),
       }),
     );
+    expect(mockFetchWithRetry).toHaveBeenCalledTimes(1);
     expect(result.success).toBe(false);
     expect(result.error).toContain("abstract-level XML");
   });
@@ -83,3 +84,4 @@ describe("Elsevier XML parsing", () => {
     }
   });
 });
+

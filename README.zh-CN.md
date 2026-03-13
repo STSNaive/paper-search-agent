@@ -182,6 +182,15 @@ codex mcp add paper_search_agent -- paper-search-agent-mcp
 ./scripts/setup-claude.sh   # Windows 下使用 .\scripts\setup-claude.ps1
 # 生成 CLAUDE.md 和 .mcp.json — 然后正常使用 Claude Code
 ```
+## 测试
+
+请在 `mcp/paper-search-agent-mcp` 目录下运行：
+
+- `npm test`：运行默认的稳定测试集。依赖公网和第三方 API 的 live tests 默认跳过。
+- `npm run test:live`：运行真实外部集成测试，并自动启用 `RUN_LIVE_API_TESTS=1`。
+- `npm run test:live -- --reporter=verbose tests/comprehensive.test.ts`：只重跑某个 live test 文件，便于排查外部服务波动。
+
+`test:live` 依赖网络可达性、API key、第三方服务状态和当前机器环境，因此可能受到限流或瞬时超时影响。
 
 ## 项目结构
 

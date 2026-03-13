@@ -15,11 +15,12 @@ const BASE = "https://www.ebi.ac.uk/europepmc/webservices/rest";
 export async function searchEuropePmc(
   query: string,
   limit: number = 20,
+  yearRange?: { start?: number; end?: number },
 ): Promise<CandidatePaper[]> {
   const params = new URLSearchParams();
   params.set("query", query);
   params.set("resultType", "core");
-  params.set("pageSize", String(Math.min(limit, 100)));
+  params.set("pageSize", String(Math.min(yearRange?.start || yearRange?.end ? Math.max(limit * 2, limit) : limit, 100)));
   params.set("format", "json");
 
   const url = `${BASE}/search?${params.toString()}`;
@@ -31,7 +32,16 @@ export async function searchEuropePmc(
   }
 
   const data = (await res.json()) as EuropePmcSearchResponse;
-  return (data.resultList?.result ?? []).map((r, i) => resultToCandidatePaper(r, i));
+  const mapped = (data.resultList?.result ?? []).map((result, index) => resultToCandidatePaper(result, index));
+
+  const filtered = mapped.filter((paper) => {
+    if (!paper.year) return true;
+    if (yearRange?.start && paper.year < yearRange.start) return false;
+    if (yearRange?.end && paper.year > yearRange.end) return false;
+    return true;
+  });
+
+  return filtered.slice(0, limit);
 }
 
 /**
@@ -58,7 +68,7 @@ export async function checkEuropePmcFulltext(
     result.isOpenAccess === "Y" ||
     result.inEPMC === "Y" ||
     (result.fullTextUrlList?.fullTextUrl ?? []).some(
-      (u) => u.availabilityCode === "OA" || u.documentStyle === "xml",
+      (urlInfo) => urlInfo.availabilityCode === "OA" || urlInfo.documentStyle === "xml",
     );
 
   return {
@@ -86,8 +96,6 @@ export async function fetchEuropePmcFulltext(
   return { xml };
 }
 
-// ── Internal types & helpers ──────────────────────────────────────
-
 interface EuropePmcSearchResponse {
   resultList?: {
     result?: EuropePmcResult[];
@@ -110,23 +118,23 @@ interface EuropePmcResult {
   };
 }
 
-function resultToCandidatePaper(r: EuropePmcResult, rank: number): CandidatePaper {
-  const doi = r.doi?.toLowerCase() ?? null;
-  const authors = r.authorString
-    ? r.authorString.split(", ").map((a) => a.replace(/\.$/, ""))
+function resultToCandidatePaper(result: EuropePmcResult, rank: number): CandidatePaper {
+  const doi = result.doi?.toLowerCase() ?? null;
+  const authors = result.authorString
+    ? result.authorString.split(", ").map((author) => author.replace(/\.$/, ""))
     : [];
 
   return {
     doi,
-    title: r.title ?? "Untitled",
+    title: result.title ?? "Untitled",
     authors,
-    venue: r.journalTitle ?? null,
-    year: r.pubYear ? parseInt(r.pubYear, 10) : null,
-    abstract: r.abstractText ?? null,
+    venue: result.journalTitle ?? null,
+    year: result.pubYear ? parseInt(result.pubYear, 10) : null,
+    abstract: result.abstractText ?? null,
     source: "europe_pmc",
     source_rank: rank,
     publisher_hint: null,
-    open_access_hint: r.isOpenAccess === "Y" || r.inEPMC === "Y",
+    open_access_hint: result.isOpenAccess === "Y" || result.inEPMC === "Y",
     landing_page_url: doi ? `https://doi.org/${doi}` : null,
   };
 }

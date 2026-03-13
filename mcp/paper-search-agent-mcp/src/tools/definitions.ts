@@ -3,7 +3,7 @@
  */
 
 import type { AppConfig } from "../config.js";
-import { enabledDiscoverySources, enabledRetrievalRoutes } from "../config.js";
+import { enabledSearchDiscoverySources, enabledRetrievalRoutes } from "../config.js";
 
 // ── Shared Options schemas ──────────────────────────────────────────
 
@@ -11,9 +11,9 @@ const discoverySourcesSchema = (config: AppConfig) => ({
   type: "array",
   items: {
     type: "string",
-    enum: enabledDiscoverySources(config),
+    enum: enabledSearchDiscoverySources(config),
   },
-  description: "List of discovery sources to use. If omitted, uses all configured sources.",
+  description: "List of search-capable discovery sources to use. If omitted, uses all configured search sources.",
 });
 
 // ── Tool Definitions ──────────────────────────────────────────────
@@ -64,7 +64,7 @@ export function getToolDefinitions(config: AppConfig) {
         properties: {
           source: {
             type: "string",
-            enum: enabledDiscoverySources(config),
+            enum: enabledSearchDiscoverySources(config),
             description: "The source to query.",
           },
           query: {
@@ -342,3 +342,4 @@ export function getToolDefinitions(config: AppConfig) {
 
   return tools;
 }
+

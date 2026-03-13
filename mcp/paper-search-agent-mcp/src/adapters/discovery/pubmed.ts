@@ -19,15 +19,15 @@ export async function searchPubMed(
   limit: number = 20,
   yearRange?: { start?: number; end?: number },
 ): Promise<CandidatePaper[]> {
-  // Step 1: esearch — get PMIDs
+  // Step 1: esearch �?get PMIDs
   const pmids = await esearch(query, limit, yearRange);
   if (pmids.length === 0) return [];
 
-  // Step 2: esummary — get metadata for PMIDs
-  const summaries = await esummary(pmids);
-
-  // Step 3: efetch — get abstracts for PMIDs
-  const abstracts = await efetchAbstracts(pmids);
+  // Step 2-3: esummary and efetch can run concurrently once we have PMIDs
+  const [summaries, abstracts] = await Promise.all([
+    esummary(pmids),
+    efetchAbstracts(pmids),
+  ]);
 
   return summaries.map((s, i) => {
     const paper = summaryToCandidatePaper(s, i);
@@ -215,3 +215,4 @@ function summaryToCandidatePaper(s: PubMedSummary, rank: number): CandidatePaper
     landing_page_url: `https://pubmed.ncbi.nlm.nih.gov/${s.uid}/`,
   };
 }
+

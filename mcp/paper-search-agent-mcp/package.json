@@ -18,7 +18,8 @@
     "test:watch": "vitest",
     "dev": "tsc --watch",
     "start": "node dist/server.js",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test:live": "node scripts/run-live-tests.mjs"
   },
   "keywords": [
     "mcp",

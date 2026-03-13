@@ -183,6 +183,15 @@ Note: npm package mode installs the MCP server binary only. Clone this repositor
 # Generates CLAUDE.md and .mcp.json — then use Claude Code normally
 ```
 
+## Testing
+
+Run tests from `mcp/paper-search-agent-mcp`:
+
+- `npm test` runs the default deterministic suite. Live network/provider smoke tests are skipped by default.
+- `npm run test:live` runs the live integration suite against real external providers and automatically enables `RUN_LIVE_API_TESTS=1`.
+- `npm run test:live -- --reporter=verbose tests/comprehensive.test.ts` is useful when you want to rerun a specific live test file while debugging a flaky provider.
+
+Live tests depend on network reachability, API keys, third-party service health, and the current machine environment, so transient timeouts or rate limits are possible.
 ## Project Structure
 
 ```

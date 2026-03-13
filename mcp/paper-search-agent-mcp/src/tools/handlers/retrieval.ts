@@ -4,9 +4,9 @@ import { fetchFulltext } from "../../adapters/retrieval/fulltext-fetcher.js";
 import { parsePaper } from "../../adapters/parsing/paper-parser.js";
 import { AccessPlan } from "../../schemas/index.js";
 import { browserRetrieve } from "../../adapters/browser/playwright-retriever.js";
-import { existsSync, copyFileSync } from "node:fs";
+import { existsSync, copyFileSync, mkdirSync } from "node:fs";
 import { extname, basename, join } from "node:path";
-import { saveParsedRecord } from "../../adapters/storage/local-store.js"; // This will be created soon
+import { saveParsedRecord } from "../../adapters/storage/local-store.js";
 
 function err(msg: string): CallToolResult {
   return { content: [{ type: "text", text: `Error: ${msg}` }], isError: true };
@@ -33,13 +33,11 @@ export async function handleFetchFulltext(args: Record<string, unknown>, config:
     }
 
     try {
-      // AccessPlan doesn't have metadata natively, but it might be passed in runtime.
       const parsed = await parsePaper(
         retrievalResult.artifact_path,
         retrievalResult.artifact_type ?? undefined,
-        (planRaw as any).metadata ?? undefined,
+        (planRaw as AccessPlan & { metadata?: unknown }).metadata as any,
       );
-      // Safe save
       const safeName = planRaw.doi.replace(/[/\\:*?"<>|]/g, "_");
       saveParsedRecord(safeName, parsed, config.paths.cache_dir);
 
@@ -61,8 +59,8 @@ export async function handleFetchFulltext(args: Record<string, unknown>, config:
         retrieval: retrievalResult,
       });
     }
-  } catch (e) {
-    return err(`fetch_fulltext failed: ${(e as Error).message}`);
+  } catch (error) {
+    return err(`fetch_fulltext failed: ${(error as Error).message}`);
   }
 }
 
@@ -73,19 +71,16 @@ export async function handleImportLocalFile(args: Record<string, unknown>, confi
 
   const doi = args.doi as string | undefined;
   const title = args.title as string | undefined;
+  const paperId = doi ? doi.replace(/[/\\:*?"<>|]/g, "_") : basename(filePath, extname(filePath));
 
-  let paperId = doi ? doi.replace(/[/\\:*?"<>|]/g, "_") : basename(filePath, extname(filePath));
-
-  // Copy into cache
   const extension = extname(filePath).slice(1);
   const cacheDir = join(config.paths.cache_dir, "_manual_imports");
-  const { mkdirSync } = require("node:fs");
   mkdirSync(cacheDir, { recursive: true });
-  const newPath = join(cacheDir, `${paperId}.${extension}`);
+  const newPath = join(cacheDir, `${paperId}.${extension || "txt"}`);
   copyFileSync(filePath, newPath);
 
   try {
-    const parsed = await parsePaper(newPath, extension, { doi, title });
+    const parsed = await parsePaper(newPath, undefined, { doi, title });
     saveParsedRecord(paperId, parsed, config.paths.cache_dir);
     return ok({
       status: "imported",
@@ -98,8 +93,8 @@ export async function handleImportLocalFile(args: Record<string, unknown>, confi
         references_found: parsed.references.length,
       },
     });
-  } catch (e) {
-    return err(`Failed to parse imported file: ${(e as Error).message}`);
+  } catch (error) {
+    return err(`Failed to parse imported file: ${(error as Error).message}`);
   }
 }
 
@@ -114,7 +109,7 @@ export async function handleBrowserRetrieve(args: Record<string, unknown>, confi
 
   const result = await browserRetrieve(
     url ?? "",
-    config.browser.state_directory, // Note: browser.state_directory was added in config
+    config.browser.state_directory,
     config.paths.cache_dir,
     doi ?? null,
     action,

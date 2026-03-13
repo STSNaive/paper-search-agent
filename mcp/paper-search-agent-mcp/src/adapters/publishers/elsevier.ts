@@ -16,6 +16,7 @@ export interface ElsevierRetrievalResult {
   content_type: "xml" | "text" | null;
   entitled: boolean;
   error: string | null;
+  retry_with_plaintext?: boolean;
 }
 
 /**
@@ -66,25 +67,31 @@ export async function preflightElsevier(
 
 /**
  * Fetch full-text content from Elsevier Article Retrieval API.
- * Tries XML first, falls back to plain text.
+ * Prefer XML; only fall back to plain text when the XML request failed in a
+ * way that could plausibly be format-specific.
  */
 export async function fetchElsevierFulltext(
   doi: string,
   apiKey: string,
 ): Promise<ElsevierRetrievalResult> {
   const xmlResult = await fetchElsevierFormat(doi, apiKey, "text/xml");
-  if (xmlResult.success) return xmlResult;
+  if (xmlResult.success || !xmlResult.retry_with_plaintext) {
+    return finalizeResult(xmlResult);
+  }
 
   const textResult = await fetchElsevierFormat(doi, apiKey, "text/plain");
-  if (textResult.success) return textResult;
+  if (textResult.success) {
+    return finalizeResult(textResult);
+  }
 
-  return {
+  return finalizeResult({
     success: false,
     content: null,
     content_type: null,
-    entitled: false,
+    entitled: xmlResult.entitled || textResult.entitled,
     error: xmlResult.error ?? textResult.error ?? "Retrieval failed",
-  };
+    retry_with_plaintext: false,
+  });
 }
 
 async function fetchElsevierFormat(
@@ -102,13 +109,14 @@ async function fetchElsevierFormat(
   });
 
   if (!res.ok) {
-    const entitled = res.status !== 403 && res.status !== 401;
+    const retryWithPlainText = accept === "text/xml" && ![401, 403, 404].includes(res.status);
     return {
       success: false,
       content: null,
       content_type: null,
-      entitled,
+      entitled: res.status !== 403 && res.status !== 401,
       error: `Elsevier API returned ${res.status}: ${res.statusText}`,
+      retry_with_plaintext: retryWithPlainText,
     };
   }
 
@@ -120,6 +128,7 @@ async function fetchElsevierFormat(
       content_type: null,
       entitled: true,
       error: "Response too short; may be abstract only",
+      retry_with_plaintext: false,
     };
   }
 
@@ -132,6 +141,7 @@ async function fetchElsevierFormat(
       error: hasElsevierAbstract(content)
         ? "Elsevier API returned abstract-level XML only; FULL view did not include article body."
         : "Elsevier API XML lacks article-body markers.",
+      retry_with_plaintext: false,
     };
   }
 
@@ -141,13 +151,17 @@ async function fetchElsevierFormat(
     content_type: accept === "text/xml" ? "xml" : "text",
     entitled: true,
     error: null,
+    retry_with_plaintext: false,
   };
+}
+
+function finalizeResult(result: ElsevierRetrievalResult): ElsevierRetrievalResult {
+  const { retry_with_plaintext: _retryWithPlainText, ...rest } = result;
+  return rest;
 }
 
 function buildElsevierArticleUrl(doi: string): string {
   const url = new URL(`${BASE}/${encodeURIComponent(doi)}`);
-  // Official docs expose multiple Article Retrieval views. FULL is required
-  // when we want the response to contain body-level content instead of metadata.
   url.searchParams.set("view", "FULL");
   return url.toString();
 }

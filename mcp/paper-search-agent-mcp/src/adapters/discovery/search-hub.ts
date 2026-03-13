@@ -1,6 +1,5 @@
 import { CandidatePaper } from "../../schemas/index.js";
-import { AppConfig, enabledDiscoverySources } from "../../config.js";
-import { deduplicateCandidates } from "../../utils/dedup.js";
+import { AppConfig, enabledSearchDiscoverySources } from "../../config.js";
 
 import { searchCrossref } from "./crossref.js";
 import { searchOpenAlex } from "./openalex.js";
@@ -9,21 +8,22 @@ import { searchPubMed } from "./pubmed.js";
 import { searchSpringerMeta } from "./springer-meta.js";
 import { searchArxiv } from "./arxiv.js";
 import { searchSemanticScholar } from "./semantic-scholar.js";
+import { searchEuropePmc } from "../publishers/europe-pmc.js";
 
 export async function searchConcurrent(
   config: AppConfig,
   query: string,
   limit: number,
   requestedSources?: string[],
-  yearRange?: { start?: number; end?: number }
+  yearRange?: { start?: number; end?: number },
 ): Promise<CandidatePaper[]> {
-  const allEnabled = enabledDiscoverySources(config);
-  const sources = requestedSources 
-    ? requestedSources.filter(s => allEnabled.includes(s))
+  const allEnabled = enabledSearchDiscoverySources(config);
+  const sources = requestedSources
+    ? requestedSources.filter((source) => allEnabled.includes(source))
     : allEnabled;
 
   if (sources.length === 0) {
-    throw new Error("No valid, enabled discovery sources specified.");
+    throw new Error("No valid, enabled search-capable discovery sources specified.");
   }
 
   const tasks: Promise<void>[] = [];
@@ -33,52 +33,62 @@ export async function searchConcurrent(
   if (sources.includes("crossref")) {
     tasks.push(
       searchCrossref(query, limit, yearRange)
-        .then(res => { allCandidates.push(...res); })
-        .catch(e => { errors.crossref = e.message; })
+        .then((results) => { allCandidates.push(...results); })
+        .catch((error: Error) => { errors.crossref = error.message; }),
     );
   }
   if (sources.includes("openalex")) {
     tasks.push(
       searchOpenAlex(query, limit, yearRange)
-        .then(res => { allCandidates.push(...res); })
-        .catch(e => { errors.openalex = e.message; })
+        .then((results) => { allCandidates.push(...results); })
+        .catch((error: Error) => { errors.openalex = error.message; }),
     );
   }
   if (sources.includes("scopus")) {
-    // Scopus requires API key from config/env, our adapter implicitly expects it
     tasks.push(
       searchScopus(query, limit, yearRange)
-        .then(res => { allCandidates.push(...res); })
-        .catch(e => { errors.scopus = e.message; })
+        .then((results) => { allCandidates.push(...results); })
+        .catch((error: Error) => { errors.scopus = error.message; }),
     );
   }
   if (sources.includes("pubmed")) {
     tasks.push(
       searchPubMed(query, limit, yearRange)
-        .then(res => { allCandidates.push(...res); })
-        .catch(e => { errors.pubmed = e.message; })
+        .then((results) => { allCandidates.push(...results); })
+        .catch((error: Error) => { errors.pubmed = error.message; }),
     );
   }
   if (sources.includes("springer_meta")) {
     tasks.push(
       searchSpringerMeta(query, limit, yearRange)
-        .then(res => { allCandidates.push(...res); })
-        .catch(e => { errors.springer_meta = e.message; })
+        .then((results) => { allCandidates.push(...results); })
+        .catch((error: Error) => { errors.springer_meta = error.message; }),
     );
   }
   if (sources.includes("arxiv")) {
     tasks.push(
       searchArxiv(query, limit, yearRange)
-        .then(res => { allCandidates.push(...res); })
-        .catch(e => { errors.arxiv = e.message; })
+        .then((results) => { allCandidates.push(...results); })
+        .catch((error: Error) => { errors.arxiv = error.message; }),
     );
   }
   if (sources.includes("semantic_scholar")) {
     tasks.push(
       searchSemanticScholar(query, limit, yearRange)
-        .then(res => { allCandidates.push(...res); })
-        .catch(e => { errors.semantic_scholar = e.message; })
+        .then((results) => { allCandidates.push(...results); })
+        .catch((error: Error) => { errors.semantic_scholar = error.message; }),
     );
+  }
+  if (sources.includes("europe_pmc")) {
+    tasks.push(
+      searchEuropePmc(query, limit, yearRange)
+        .then((results) => { allCandidates.push(...results); })
+        .catch((error: Error) => { errors.europe_pmc = error.message; }),
+    );
+  }
+
+  if (tasks.length === 0) {
+    throw new Error(`No search adapters are wired for the requested sources: ${sources.join(", ")}`);
   }
 
   await Promise.allSettled(tasks);

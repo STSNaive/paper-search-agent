@@ -3,12 +3,10 @@
  * Manages the local cache, corpus, and artifact storage.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { doiToSafePath } from "../../utils/doi.js";
 import type { NormalizedPaperRecord } from "../../schemas/index.js";
-
-// ── Cache operations ──────────────────────────────────────────────
 
 export interface CacheEntry {
   doi: string;
@@ -23,24 +21,35 @@ export function checkCache(
 ): { found: boolean; path: string | null; entry: CacheEntry | null } {
   const safeDoi = doiToSafePath(doi);
   const dir = resolve(cacheDir, safeDoi);
-  if (existsSync(dir)) {
-    // Try to read the metadata file
-    const metaPath = join(dir, "meta.json");
-    if (existsSync(metaPath)) {
-      try {
-        const meta = JSON.parse(readFileSync(metaPath, "utf-8")) as CacheEntry;
-        return { found: true, path: dir, entry: meta };
-      } catch {
-        // meta.json exists but is corrupted
-      }
-    }
-    return {
-      found: true,
-      path: dir,
-      entry: { doi, path: dir, artifact_type: null, cached_at: "unknown" },
-    };
+  if (!existsSync(dir)) {
+    return { found: false, path: null, entry: null };
   }
-  return { found: false, path: null, entry: null };
+
+  let entry: CacheEntry | null = null;
+  const metaPath = join(dir, "meta.json");
+  if (existsSync(metaPath)) {
+    try {
+      entry = JSON.parse(readFileSync(metaPath, "utf-8")) as CacheEntry;
+    } catch {
+      entry = null;
+    }
+  }
+
+  const artifactPath = resolveCachedArtifactPath(dir, entry?.artifact_type ?? null, entry?.path ?? null);
+  if (!artifactPath) {
+    return { found: false, path: null, entry };
+  }
+
+  const resolvedEntry: CacheEntry = entry
+    ? { ...entry, path: artifactPath }
+    : {
+        doi,
+        path: artifactPath,
+        artifact_type: inferArtifactTypeFromPath(artifactPath),
+        cached_at: "unknown",
+      };
+
+  return { found: true, path: artifactPath, entry: resolvedEntry };
 }
 
 /**
@@ -58,7 +67,7 @@ export function cacheArtifact(
 
   const entry: CacheEntry = {
     doi,
-    path: dir,
+    path: resolve(artifactPath),
     artifact_type: artifactType,
     cached_at: new Date().toISOString(),
   };
@@ -68,7 +77,52 @@ export function cacheArtifact(
   return entry;
 }
 
-// ── Parsed Records operations ─────────────────────────────────────
+function resolveCachedArtifactPath(
+  dir: string,
+  artifactType: string | null,
+  storedPath: string | null,
+): string | null {
+  const candidates = new Set<string>();
+
+  if (storedPath) {
+    candidates.add(resolve(storedPath));
+  }
+
+  const normalizedType = artifactType?.toLowerCase() ?? null;
+  if (normalizedType) {
+    const extension = normalizedType === "text" ? "txt" : normalizedType;
+    candidates.add(join(dir, `fulltext.${extension}`));
+  }
+
+  for (const defaultPath of ["fulltext.xml", "fulltext.html", "fulltext.pdf", "fulltext.txt"]) {
+    candidates.add(join(dir, defaultPath));
+  }
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate) && statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+
+  for (const fileName of readdirSync(dir)) {
+    if (fileName === "meta.json") continue;
+    const candidate = join(dir, fileName);
+    if (existsSync(candidate) && statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function inferArtifactTypeFromPath(filePath: string): string | null {
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith(".xml")) return "xml";
+  if (lower.endsWith(".html") || lower.endsWith(".htm")) return "html";
+  if (lower.endsWith(".pdf")) return "pdf";
+  if (lower.endsWith(".txt")) return "text";
+  return null;
+}
 
 function parsedDir(basePath: string): string {
   return resolve(basePath, "_parsed");
@@ -77,34 +131,32 @@ function parsedDir(basePath: string): string {
 export function saveParsedRecord(
   paperId: string,
   record: NormalizedPaperRecord,
-  basePath: string
+  basePath: string,
 ): void {
   const safeName = paperId.replace(/[/\\:*?"<>|]/g, "_");
   const dir = parsedDir(basePath);
   mkdirSync(dir, { recursive: true });
-  const p = join(dir, `${safeName}.json`);
-  writeFileSync(p, JSON.stringify(record, null, 2), "utf-8");
+  const filePath = join(dir, `${safeName}.json`);
+  writeFileSync(filePath, JSON.stringify(record, null, 2), "utf-8");
 }
 
 export function loadParsedRecord(
   paperId: string,
-  basePath: string
+  basePath: string,
 ): NormalizedPaperRecord | null {
   const safeName = paperId.replace(/[/\\:*?"<>|]/g, "_");
-  const p = join(parsedDir(basePath), `${safeName}.json`);
-  if (!existsSync(p)) return null;
-  return JSON.parse(readFileSync(p, "utf-8")) as NormalizedPaperRecord;
+  const filePath = join(parsedDir(basePath), `${safeName}.json`);
+  if (!existsSync(filePath)) return null;
+  return JSON.parse(readFileSync(filePath, "utf-8")) as NormalizedPaperRecord;
 }
 
 export function loadAllParsedRecords(basePath: string): NormalizedPaperRecord[] {
   const dir = parsedDir(basePath);
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
-    .filter((f) => f.endsWith(".json"))
-    .map((f) => JSON.parse(readFileSync(join(dir, f), "utf-8")) as NormalizedPaperRecord);
+    .filter((fileName) => fileName.endsWith(".json"))
+    .map((fileName) => JSON.parse(readFileSync(join(dir, fileName), "utf-8")) as NormalizedPaperRecord);
 }
-
-// ── Corpus operations ─────────────────────────────────────────────
 
 export interface CorpusIndex {
   name: string;
@@ -128,13 +180,10 @@ function corpusIndexPath(name: string, basePath: string): string {
   return join(corpusDir(basePath), `${name}.json`);
 }
 
-/**
- * Load or create a corpus index file.
- */
 function loadCorpus(name: string, basePath: string): CorpusIndex {
-  const p = corpusIndexPath(name, basePath);
-  if (existsSync(p)) {
-    return JSON.parse(readFileSync(p, "utf-8")) as CorpusIndex;
+  const filePath = corpusIndexPath(name, basePath);
+  if (existsSync(filePath)) {
+    return JSON.parse(readFileSync(filePath, "utf-8")) as CorpusIndex;
   }
   return {
     name,
@@ -151,9 +200,6 @@ function saveCorpus(corpus: CorpusIndex, basePath: string): void {
   writeFileSync(corpusIndexPath(corpus.name, basePath), JSON.stringify(corpus, null, 2));
 }
 
-/**
- * Add a paper to a named corpus.
- */
 export function addToCorpus(
   corpusName: string,
   paperId: string,
@@ -162,8 +208,7 @@ export function addToCorpus(
   basePath: string,
 ): CorpusIndex {
   const corpus = loadCorpus(corpusName, basePath);
-  // Avoid duplicates
-  if (corpus.papers.some((p) => p.paper_id === paperId)) {
+  if (corpus.papers.some((paper) => paper.paper_id === paperId)) {
     return corpus;
   }
   corpus.papers.push({
@@ -176,35 +221,26 @@ export function addToCorpus(
   return corpus;
 }
 
-/**
- * List all papers in a corpus.
- */
 export function listCorpus(corpusName: string, basePath: string): CorpusPaperRef[] {
   return loadCorpus(corpusName, basePath).papers;
 }
 
-/**
- * Remove a paper from a corpus.
- */
 export function removeFromCorpus(
   corpusName: string,
   paperId: string,
   basePath: string,
 ): CorpusIndex {
   const corpus = loadCorpus(corpusName, basePath);
-  corpus.papers = corpus.papers.filter((p) => p.paper_id !== paperId);
+  corpus.papers = corpus.papers.filter((paper) => paper.paper_id !== paperId);
   saveCorpus(corpus, basePath);
   return corpus;
 }
 
-/**
- * Deduplicate corpus entries by DOI.
- */
 export function deduplicateCorpus(corpusName: string, basePath: string): CorpusIndex {
   const corpus = loadCorpus(corpusName, basePath);
   const seen = new Set<string>();
-  corpus.papers = corpus.papers.filter((p) => {
-    const key = p.doi ?? p.paper_id;
+  corpus.papers = corpus.papers.filter((paper) => {
+    const key = paper.doi ?? paper.paper_id;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -213,14 +249,11 @@ export function deduplicateCorpus(corpusName: string, basePath: string): CorpusI
   return corpus;
 }
 
-/**
- * List all available corpus names.
- */
 export function listAllCorpora(basePath: string): string[] {
   if (!basePath) return [];
   const dir = corpusDir(basePath);
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
-    .filter((f) => f.endsWith(".json"))
-    .map((f) => f.replace(".json", ""));
+    .filter((fileName) => fileName.endsWith(".json"))
+    .map((fileName) => fileName.replace(".json", ""));
 }
