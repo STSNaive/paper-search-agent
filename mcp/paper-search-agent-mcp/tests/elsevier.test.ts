@@ -52,7 +52,7 @@ describe("Elsevier retrieval", () => {
 });
 
 describe("Elsevier XML parsing", () => {
-  it("falls back to dc:description and dc:creator when only abstract metadata exists", () => {
+  it("falls back to dc:description and dc:creator when only abstract metadata exists", async () => {
     const dir = mkdtempSync(join(tmpdir(), "elsevier-xml-"));
     const filePath = join(dir, "sample.xml");
     const xml = `
@@ -73,7 +73,7 @@ describe("Elsevier XML parsing", () => {
     writeFileSync(filePath, xml, "utf-8");
 
     try {
-      const parsed = parsePaper(filePath, "xml");
+      const parsed = await parsePaper(filePath, "xml");
       expect(parsed.metadata.title).toBe("Sample Elsevier Article");
       expect(parsed.metadata.authors).toEqual(["Alpha, Ada", "Beta, Ben"]);
       expect(parsed.sections.abstract).toContain("abstract text");

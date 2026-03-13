@@ -22,7 +22,7 @@ export async function handleParsePaper(args: Record<string, unknown>, config: Ap
   }
 
   try {
-    const parsed = parsePaper(filePath, artifactType);
+    const parsed = await parsePaper(filePath, artifactType);
     saveParsedRecord(paperId, parsed, config.paths.cache_dir);
     return ok({
       paper_id: paperId,

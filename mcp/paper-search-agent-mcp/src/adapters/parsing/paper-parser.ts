@@ -12,29 +12,27 @@ import type { NormalizedPaperRecord } from "../../schemas/index.js";
 /**
  * Parse an artifact file into a NormalizedPaperRecord.
  */
-export function parsePaper(
+export async function parsePaper(
   artifactPath: string,
   artifactType?: string,
   metadata?: Partial<NormalizedPaperRecord["metadata"]>,
-): NormalizedPaperRecord {
+): Promise<NormalizedPaperRecord> {
   if (!existsSync(artifactPath)) {
     throw new Error(`Artifact not found: ${artifactPath}`);
   }
 
   const detectedType = artifactType ?? detectType(artifactPath);
-  const raw = readFileSync(artifactPath, "utf-8");
-
   switch (detectedType) {
     case "xml":
-      return parseXml(raw, artifactPath, metadata);
+      return parseXml(readFileSync(artifactPath, "utf-8"), artifactPath, metadata);
     case "html":
-      return parseHtml(raw, artifactPath, metadata);
+      return parseHtml(readFileSync(artifactPath, "utf-8"), artifactPath, metadata);
     case "text":
-      return parsePlainText(raw, artifactPath, metadata);
+      return parsePlainText(readFileSync(artifactPath, "utf-8"), artifactPath, metadata);
     case "pdf":
-      return createPdfPlaceholder(artifactPath, metadata);
+      return parsePdf(artifactPath, metadata);
     default:
-      return parsePlainText(raw, artifactPath, metadata);
+      return parsePlainText(readFileSync(artifactPath, "utf-8"), artifactPath, metadata);
   }
 }
 
@@ -241,10 +239,89 @@ function parsePlainText(
   };
 }
 
+async function parsePdf(
+  artifactPath: string,
+  metadata?: Partial<NormalizedPaperRecord["metadata"]>,
+): Promise<NormalizedPaperRecord> {
+  try {
+    const [{ extractText, getDocumentProxy, getMeta }, pdfBuffer] = await Promise.all([
+      import("unpdf"),
+      Promise.resolve(readFileSync(artifactPath)),
+    ]);
+
+    const pdf = await getDocumentProxy(new Uint8Array(pdfBuffer));
+    const [{ totalPages, text }, meta] = await Promise.all([
+      extractText(pdf, { mergePages: false }),
+      getMeta(pdf).catch(() => ({ info: {}, metadata: null })),
+    ]);
+    const metaInfo = meta.info as Record<string, unknown>;
+
+    const pages = text
+      .map((pageText) => normalizePdfText(pageText))
+      .filter((pageText) => pageText.length > 0);
+
+    if (pages.length === 0) {
+      return createPdfPlaceholder(artifactPath, metadata, "No selectable text found in PDF; OCR may be required.");
+    }
+
+    const extractedText = pages.join("\n\n");
+    const sectionMap: Record<string, { start: number; end: number }> = {};
+    const sections: Record<string, string> = {};
+    let offset = 0;
+
+    pages.forEach((pageText, index) => {
+      const key = `page_${index + 1}`;
+      sections[key] = pageText;
+      sectionMap[key] = { start: offset, end: offset + pageText.length };
+      offset += pageText.length + 2;
+    });
+
+    const derivedTitle = pickPdfTitle(metaInfo, metadata?.title, pages[0]);
+    const derivedAuthors = metadata?.authors?.length ? metadata.authors : parsePdfAuthors(metaInfo.Author);
+    const derivedYear = metadata?.year ?? parsePdfYear(metaInfo);
+
+    return {
+      metadata: {
+        title: derivedTitle,
+        authors: derivedAuthors,
+        doi: metadata?.doi ?? detectDoiFromText(extractedText),
+        venue: metadata?.venue ?? null,
+        year: derivedYear,
+        publisher: metadata?.publisher ?? null,
+        language: metadata?.language ?? "en",
+      },
+      access_record: {
+        route_used: "parsed",
+        retrieved_at: new Date().toISOString(),
+        artifact_type: "pdf",
+        source_url: null,
+        local_path: artifactPath,
+      },
+      content_format: "pdf",
+      section_map: sectionMap,
+      extracted_text: extractedText,
+      sections,
+      references: [],
+      figures_index: [],
+      tables_index: [],
+    };
+  } catch (error) {
+    return createPdfPlaceholder(
+      artifactPath,
+      metadata,
+      `PDF text extraction failed: ${(error as Error).message}`,
+    );
+  }
+}
+
 function createPdfPlaceholder(
   artifactPath: string,
   metadata?: Partial<NormalizedPaperRecord["metadata"]>,
+  reason?: string,
 ): NormalizedPaperRecord {
+  const note = reason
+    ? `[PDF file at ${artifactPath}. ${reason}]`
+    : `[PDF file at ${artifactPath}. Use a PDF reader to extract content.]`;
   return {
     metadata: {
       title: metadata?.title ?? "Untitled",
@@ -264,9 +341,9 @@ function createPdfPlaceholder(
     },
     content_format: "pdf",
     section_map: {},
-    extracted_text: `[PDF file at ${artifactPath}. Use the Anthropic PDF skill or read the file directly to extract content.]`,
+    extracted_text: note,
     sections: {
-      _pdf_note: "This PDF has not been text-extracted. Use the Anthropic PDF skill to read it.",
+      _pdf_note: reason ?? "This PDF has not been text-extracted yet.",
     },
     references: [],
     figures_index: [],
@@ -390,6 +467,56 @@ function extractTables(xml: string): string[] {
     tables.push(caption ? `${label}: ${caption}` : label);
   }
   return tables;
+}
+
+function normalizePdfText(text: string): string {
+  return text
+    .replace(/\u0000/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function pickPdfTitle(
+  info: Record<string, unknown> | undefined,
+  fallbackTitle: string | undefined,
+  firstPageText: string | undefined,
+): string {
+  const metaTitle = typeof info?.Title === "string" ? info.Title.trim() : "";
+  if (metaTitle) return metaTitle;
+  if (fallbackTitle) return fallbackTitle;
+  if (firstPageText) {
+    const firstLine = firstPageText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line.length > 20);
+    if (firstLine) return firstLine.slice(0, 300);
+  }
+  return "Untitled";
+}
+
+function parsePdfAuthors(authorField: unknown): string[] {
+  if (typeof authorField !== "string" || !authorField.trim()) return [];
+  return authorField
+    .split(/;|, and | and /i)
+    .map((name) => name.trim())
+    .filter(Boolean);
+}
+
+function parsePdfYear(info: Record<string, unknown> | undefined): number | null {
+  const candidates = [info?.ModDate, info?.CreationDate];
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const match = /(?:D:)?(\d{4})/.exec(candidate);
+    if (match) return parseInt(match[1], 10);
+  }
+  return null;
+}
+
+function detectDoiFromText(text: string): string | null {
+  const match = /\b10\.\d{4,9}\/[-._;()/:A-Z0-9]+\b/i.exec(text);
+  return match ? match[0] : null;
 }
 
 function detectType(filePath: string): string {

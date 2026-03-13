@@ -34,7 +34,11 @@ export async function handleFetchFulltext(args: Record<string, unknown>, config:
 
     try {
       // AccessPlan doesn't have metadata natively, but it might be passed in runtime.
-      const parsed = parsePaper(retrievalResult.artifact_path, retrievalResult.artifact_type ?? undefined, (planRaw as any).metadata ?? undefined);
+      const parsed = await parsePaper(
+        retrievalResult.artifact_path,
+        retrievalResult.artifact_type ?? undefined,
+        (planRaw as any).metadata ?? undefined,
+      );
       // Safe save
       const safeName = planRaw.doi.replace(/[/\\:*?"<>|]/g, "_");
       saveParsedRecord(safeName, parsed, config.paths.cache_dir);
@@ -81,7 +85,7 @@ export async function handleImportLocalFile(args: Record<string, unknown>, confi
   copyFileSync(filePath, newPath);
 
   try {
-    const parsed = parsePaper(newPath, extension, { doi, title });
+    const parsed = await parsePaper(newPath, extension, { doi, title });
     saveParsedRecord(paperId, parsed, config.paths.cache_dir);
     return ok({
       status: "imported",
