@@ -1,5 +1,7 @@
 # paper-search-agent
 
+[English](README.md) | [中文](README.zh-CN.md)
+
 A local-first scholarly paper discovery, access planning, and full-text retrieval agent.
 
 ## Capabilities
@@ -59,8 +61,9 @@ This separation is intentional: discovery does not imply full-text entitlement.
 
 ## Prerequisites
 
+- [OpenAI Codex CLI](https://github.com/openai/codex) (`npm install -g @openai/codex`)
 - Node.js ≥ 20
-- npm or pnpm
+- npm
 - A campus network (for subscription full-text routes) or VPN/EZproxy
 - API keys as needed (see `.env.example`)
 
@@ -73,49 +76,54 @@ This mode matches the real project architecture: root `AGENTS.md` + `skills/` + 
 Linux/macOS:
 
 ```bash
-# 1. Clone
+# 1. Clone and enter project
 git clone https://github.com/STSNaive/paper-search-agent.git
 cd paper-search-agent
 
-# 2. Environment
-cp .env.example .env
-
-# 3. Build MCP server
+# 2. Build MCP server
 cd mcp/paper-search-agent-mcp
 npm install
 npm run build
+
+# 3. Environment — set your API keys
+cp ../../.env.example .env
+# Edit .env and fill in your API keys
+
+# 4. Runtime config (optional — defaults are used if missing)
+cp config.toml.example config.toml
+# Edit config.toml to enable/disable sources and routes
+
 cd ../..
 ```
 
 Windows PowerShell:
 
 ```powershell
-# 1. Clone
+# 1. Clone and enter project
 git clone https://github.com/STSNaive/paper-search-agent.git
 cd paper-search-agent
 
-# 2. Environment
-Copy-Item .env.example .env
-
-# 3. Build MCP server
-cd mcp/paper-search-agent-mcp
+# 2. Build MCP server
+cd mcp\paper-search-agent-mcp
 npm install
 npm run build
-cd ../..
+
+# 3. Environment — set your API keys
+Copy-Item ..\..\.env.example .env
+# Edit .env and fill in your API keys
+
+# 4. Runtime config (optional — defaults are used if missing)
+Copy-Item config.toml.example config.toml
+# Edit config.toml to enable/disable sources and routes
+
+cd ..\..
 ```
 
-Create runtime config for this MCP server:
+Register the MCP server with Codex. Choose **one** of the following methods:
 
-```bash
-# Linux/macOS:
-cp mcp/paper-search-agent-mcp/config.toml.example mcp/paper-search-agent-mcp/config.toml
-```
+**Method 1 — Manual config file** (recommended for full control):
 
-```powershell
-Copy-Item mcp/paper-search-agent-mcp/config.toml.example mcp/paper-search-agent-mcp/config.toml
-```
-
-Configure Codex MCP in `.codex/config.toml` (project-scoped) or `~/.codex/config.toml` (global):
+Add to `.codex/config.toml` (project-scoped) or `~/.codex/config.toml` (global):
 
 ```toml
 [mcp_servers.paper_search_agent]
@@ -124,11 +132,21 @@ args = ["dist/server.js"]
 cwd = "mcp/paper-search-agent-mcp"
 ```
 
-You can also add it with the Codex CLI:
+**Method 2 — Codex CLI command**:
 
 ```bash
 codex mcp add paper_search_agent -- node mcp/paper-search-agent-mcp/dist/server.js
 ```
+
+> **Note**: When using `codex mcp add`, the MCP server's working directory defaults to the project root. The server will look for `.env` and `config.toml` in its working directory first, then fall back to `../../config.toml`. If you placed `.env` inside `mcp/paper-search-agent-mcp/`, use Method 1 with explicit `cwd` instead.
+
+After registration, start Codex in the project directory:
+
+```bash
+codex
+```
+
+Codex will automatically read `AGENTS.md` for agent instructions and `skills/` for domain knowledge.
 
 If you use the Codex IDE extension, it reads the same Codex config file.
 
@@ -143,19 +161,20 @@ Repository name and npm package name are different:
 npm install -g paper-search-agent-mcp
 ```
 
-MCP config example:
+Register with Codex:
 
-```json
-{
-  "mcpServers": {
-    "paper-search-agent": {
-      "command": "paper-search-agent-mcp"
-    }
-  }
-}
+```toml
+[mcp_servers.paper_search_agent]
+command = "paper-search-agent-mcp"
 ```
 
-Note: npm package mode installs the MCP server binary. The root workspace resources (`AGENTS.md`, `skills/`) are part of this repository workflow.
+Or via CLI:
+
+```bash
+codex mcp add paper_search_agent -- paper-search-agent-mcp
+```
+
+Note: npm package mode installs the MCP server binary only. Clone this repository to get the root workspace resources (`AGENTS.md`, `skills/`).
 
 ### Claude Code Users
 
